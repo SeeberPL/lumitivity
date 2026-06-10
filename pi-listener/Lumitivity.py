@@ -3,6 +3,7 @@ import requests
 import socket # Import for networking to desktop
 import threading # Import for background listening for calls from desktop
 import time
+import json
 
 class MyFrame(ctk.CTkFrame):
     def __init__(self, master, **kwargs):
@@ -38,7 +39,7 @@ class Dashboard(ctk.CTk):
         self.socket.bind(("", 8080))
         
         # WLED variables
-        self.wled_ip = "left-wall.local" # WLED Controller name
+        self.wled_ip = ["192.168.4.40", "192.168.4.38"] # WLED Controller name
         self.wled_instr = {
                             "seg": {
                                 "on": True,
@@ -99,59 +100,55 @@ class Dashboard(ctk.CTk):
                 self.after(0, self.trigger_keyboard_flash)
                 
     def trigger_keyboard_flash(self):
-        self.wled_instr = {
+        self.sync_wleds({
                             "on": True,
-                            "bri": 255,
+                            "bri": 128,
                             "seg": [{
                                 "col": [[255, 255, 255]],
                                 "tt": 0
                                 }]
-                            }
-        self.sync_wleds()
+                            })
         # Return to normal work lights after 100ms
-        self.after(00, self.set_mode_work)
+        self.after(100,  lambda: self.sync_wleds({"bri": 128, "seg": [{"col": [[0, 255, 0]], "tt": 0}]}))
             
     def set_mode_work(self):
         self.current_mode = "Work"
         print("Work Mode Enabled")
         print(self.work_seconds)
-        self.wled_instr = {
+        self.sync_wleds({
                             "on": True,
                             "bri": 128,
                             "seg": [{
                                 "col": [[0, 255, 0]],
                                 "fx": 0,
                                 }]
-                          }
-        self.sync_wleds()
+                          })
         
     def set_mode_leisure(self):
         self.current_mode = "Leisure"
         print("Leisure Mode Enabled")
         print(self.leisure_seconds)
         if self.leisure_seconds > 0:
-            self.wled_instr = {
+            self.sync_wleds({
                             "on": True,
                             "bri": 128,
                             "seg": [{
                                 "col": [[255, 255, 0]],
                                 "fx": 0,
                                 }]
-                          }
-        self.sync_wleds()
+                          })
         
     def set_mode_idle(self):
         self.current_mode = "Idle"
         print("Idle Mode Enabled")
-        self.wled_instr = {
+        self.sync_wleds({
                             "on": True,
                             "bri": 128,
                             "seg": [{
                                 "col": [[255, 255, 255]],
                                 "fx": 0,
                                 }]
-                          }
-        self.sync_wleds()
+                          })
         
     # Placeholder for button function
     def button_callback(self):
@@ -164,7 +161,7 @@ class Dashboard(ctk.CTk):
         return f"{hours:02}:{minutes:02}:{seconds:02}"
     
     def end_of_work(self):
-        self.wled_instr = {
+        self.sync_wleds({
                             "on": True,
                             "bri": 128,
                             "seg": [{
@@ -172,11 +169,10 @@ class Dashboard(ctk.CTk):
                                 "fx": 1,
                                 "sx": 200
                                 }]
-                          }
-        self.sync_wleds()
+                            })
         
     def end_of_leisure(self):
-        self.wled_instr = {
+        self.sync_wleds({
                             "on": True,
                             "bri": 128,
                             "seg": [{
@@ -187,15 +183,17 @@ class Dashboard(ctk.CTk):
                                 "fx": 1,
                                 "sx": 200
                                 }]
-                          }
-        self.sync_wleds()
+                          })
         
-    def sync_wleds(self):
-        #for ip in self.wled_ips:
+    def sync_wleds(self, payload):
+        # Convert dictionary to binary-encoded JSON string
+        packet = json.dumps(payload).encode()
+        for ip in self.wled_ip:
             try:
-                requests.post(f"http://{self.wled_ip}/json/state", json=self.wled_instr, timeout=0.2)
+                # Use the raw IP address for Station 1 to avoid mDNS lag
+                self.socket.sendto(packet, (ip, 21324))
             except Exception as e:
-                print (f"Error: {e}")
+                print(f"UDP Error: {e}")
         
     # Function that toggles the power state of the LEDs
     def toggle_light(self):
