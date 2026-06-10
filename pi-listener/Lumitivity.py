@@ -91,9 +91,25 @@ class Dashboard(ctk.CTk):
     
     def receive_data(self):
         while True:
+            # Thread sleeps here until Windows 'shouts'
+            data, addr = self.socket.recvfrom(1024)
             if self.current_mode == "Work":
-                data, addr = self.socket.recvfrom(1024)
                 print(f"Received data from {addr}: {data.decode()}")
+                # Jump back to the main thread for UI/Light safety
+                self.after(0, self.trigger_keyboard_flash)
+                
+    def trigger_keyboard_flash(self):
+        self.wled_instr = {
+                            "on": True,
+                            "bri": 255,
+                            "seg": [{
+                                "col": [[255, 255, 255]],
+                                "tt": 0
+                                }]
+                            }
+        self.sync_wleds()
+        # Return to normal work lights after 100ms
+        self.after(00, self.set_mode_work)
             
     def set_mode_work(self):
         self.current_mode = "Work"
