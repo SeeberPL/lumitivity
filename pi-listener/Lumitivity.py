@@ -39,7 +39,7 @@ class Dashboard(ctk.CTk):
         self.socket.bind(("", 8080))
         
         # WLED variables
-        self.wled_ip = ["192.168.4.40", "192.168.4.38"] # WLED Controller name
+        self.wled_ip = ["192.168.4.49", "192.168.4.40"] # WLED Controller name
         self.wled_instr = {
                             "seg": {
                                 "on": True,
@@ -54,7 +54,10 @@ class Dashboard(ctk.CTk):
         # Mode Variables
         self.current_mode = "Idle" # Keeps track of current mode
         self.work_seconds = 0 # Work mode timer, keeping track of # seconds spent in work mode
-        self.leisure_seconds = 5 # Leisure mode timer, keeping track of # seconds left in leisure mode
+        self.leisure_seconds = 5000 # Leisure mode timer, keeping track of # seconds left in leisure mode
+        
+        self.last_flash_time = 0
+        self.flash_cooldown = 0.1 # Seconds
         
         # Frame for Lumitivity Buttons
         self.my_frame = MyFrame(master=self)
@@ -94,22 +97,48 @@ class Dashboard(ctk.CTk):
         while True:
             # Thread sleeps here until Windows 'shouts'
             data, addr = self.socket.recvfrom(1024)
-            if self.current_mode == "Work":
-                print(f"Received data from {addr}: {data.decode()}")
-                # Jump back to the main thread for UI/Light safety
-                self.after(0, self.trigger_keyboard_flash)
+            # Check the first byte (The Header)
+            header = data[0]
+            
+            if header == 107: # 'k' for keyboard
+                if self.current_mode == "Work":
+                    print(f"Received data from {addr}: {data.decode()}")
+                    # Jump back to the main thread for UI/Light safety
+                    self.after(0, self.trigger_keyboard_flash)
+            elif header == 115: # 's' for Screen
+                if self.current_mode == "Leisure":
+                    # Extract the 12 color bytes (Payload)
+                    payload = data[1:]
+                    self.after(0, lambda: self.update_screen_sync(payload))
+                    
+    def update_screen_sync(self,payload):
+        top = [payload[0], payload[1], payload[2]]
+        bottom = [payload[3], payload[4], payload[5]]
+        left = [payload[6], payload[7], payload[8]]
+        right = [payload[9], payload[10], payload[11]]
+        
+        self.sync_wleds({
+                            "seg": [
+                                {"id": 0, "col": [top]},
+                                {"id": 1, "col": [bottom]},
+                                {"id": 2, "col": [left]},
+                                {"id": 3, "col": [right]}
+                                ]
+                            })
                 
     def trigger_keyboard_flash(self):
+        now = time.time()
+        if now - self.last_flash_time < self.flash_cooldown:
+            return
+        self.last_flash_time = now
         self.sync_wleds({
                             "on": True,
-                            "bri": 128,
-                            "seg": [{
-                                "col": [[255, 255, 255]],
-                                "tt": 0
-                                }]
+                            "bri": 255,
+                            "tt": 0,
+                            "seg": [{"col": [[255, 255, 255]]}]
                             })
         # Return to normal work lights after 100ms
-        self.after(100,  lambda: self.sync_wleds({"bri": 128, "seg": [{"col": [[0, 255, 0]], "tt": 0}]}))
+        self.after(100,  lambda: self.sync_wleds({"bri": 128, "tt": 5, "seg": [{"col": [[0, 255, 0]]}]}))
             
     def set_mode_work(self):
         self.current_mode = "Work"
