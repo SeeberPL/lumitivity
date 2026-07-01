@@ -46,7 +46,9 @@ class Dashboard(ctk.CTk):
         
         # Build UI
         self._build_layout()
+        self._active_btn = None
         
+        # Start background thread and timer loop
         desktop_input_thread = threading.Thread(target=self.receive_data, daemon=True).start()
         self.main_loop()        
     
@@ -79,34 +81,34 @@ class Dashboard(ctk.CTk):
         self._btn_work.grid(row=0, column=0, sticky="nsew", padx=(0, GAP), pady=(0, GAP))
         
         # Entertainment Button
-        self._btn_work = ctk.CTkButton(
+        self._btn_leisure = ctk.CTkButton(
             mode_frame,
             text="ENTERTAINMENT",
             font=ctk.CTkFont(size=22, weight="bold"),
             command=self.set_mode_leisure,
             corner_radius=6
             )
-        self._btn_work.grid(row=0, column=1, sticky="nsew", padx=(GAP, 0), pady=(0, GAP))
+        self._btn_leisure.grid(row=0, column=1, sticky="nsew", padx=(GAP, 0), pady=(0, GAP))
         
         # Music Button
-        self._btn_work = ctk.CTkButton(
+        self._btn_music = ctk.CTkButton(
             mode_frame,
             text="MUSIC",
             font=ctk.CTkFont(size=22, weight="bold"),
-            command=self.button_callback,
+            command=self.set_mode_music,
             corner_radius=6
             )
-        self._btn_work.grid(row=1, column=0, sticky="nsew", padx=(0, GAP), pady=(GAP, 0))
+        self._btn_music.grid(row=1, column=0, sticky="nsew", padx=(0, GAP), pady=(GAP, 0))
         
         # Custom Button
-        self._btn_work = ctk.CTkButton(
+        self._btn_idle = ctk.CTkButton(
             mode_frame,
             text="CUSTOM",
             font=ctk.CTkFont(size=22, weight="bold"),
-            command=self.button_callback,
+            command=self.set_mode_idle,
             corner_radius=6
             )
-        self._btn_work.grid(row=1, column=1, sticky="nsew", padx=(GAP, 0), pady=(GAP, 0))
+        self._btn_idle.grid(row=1, column=1, sticky="nsew", padx=(GAP, 0), pady=(GAP, 0))
     
         # -- Sidebar ---------------------------------------------------------------------------------------
     
@@ -186,21 +188,6 @@ class Dashboard(ctk.CTk):
                     # Extract the 12 color bytes (Payload)
                     payload = data[1:]
                     self.after(0, lambda: self.update_screen_sync(payload))
-                    
-    def update_screen_sync(self,payload):
-        top = [payload[0], payload[1], payload[2]]
-        bottom = [payload[3], payload[4], payload[5]]
-        left = [payload[6], payload[7], payload[8]]
-        right = [payload[9], payload[10], payload[11]]
-        
-        self.sync_wleds({
-                            "seg": [
-                                {"id": 0, "col": [top]},
-                                {"id": 1, "col": [bottom]},
-                                {"id": 2, "col": [left]},
-                                {"id": 3, "col": [right]}
-                                ]
-                            })
         
     def sync_wleds(self, payload):
         # Convert dictionary to binary-encoded JSON string
@@ -236,6 +223,7 @@ class Dashboard(ctk.CTk):
     
     def set_mode_work(self):
         self.current_mode = "Work"
+        self._set_active(self._btn_work)
         print("Work Mode Enabled")
         print(self.work_seconds)
         self.sync_wleds({
@@ -249,6 +237,7 @@ class Dashboard(ctk.CTk):
         
     def set_mode_leisure(self):
         self.current_mode = "Leisure"
+        self._set_active(self._btn_leisure)
         print("Leisure Mode Enabled")
         print(self.leisure_seconds)
         if self.leisure_seconds > 0:
@@ -263,12 +252,26 @@ class Dashboard(ctk.CTk):
         
     def set_mode_idle(self):
         self.current_mode = "Idle"
+        self._set_active(self._btn_idle)
         print("Idle Mode Enabled")
         self.sync_wleds({
                             "on": True,
                             "bri": 128,
                             "seg": [{
                                 "col": [[255, 255, 255]],
+                                "fx": 0,
+                                }]
+                          })
+        
+    def set_mode_music(self):
+        self.current_mode = "Music"
+        self._set_active(self._btn_music)
+        print("Music Mode Enabled")
+        self.sync_wleds({
+                            "on": True,
+                            "bri": 128,
+                            "seg": [{
+                                "col": [[0, 255, 255]],
                                 "fx": 0,
                                 }]
                           })
@@ -333,11 +336,15 @@ class Dashboard(ctk.CTk):
             except Exception as e:
                 print(f"Error: {e}")
                 
-app = Dashboard()
-app.mainloop()
-
-        
-
-        
+    def _set_active(self, btn):
+        # If there is already an active button, get rid of its border
+        if self._active_btn:
+            self._active_btn.configure(border_width=0)
+            
+        # Add a border to the new active button
+        self._active_btn = btn
+        if btn:
+            btn.configure(border_width=3, border_color="FFFFFF")
+                
 app = Dashboard()
 app.mainloop()
