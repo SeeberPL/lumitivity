@@ -12,8 +12,8 @@ class Dashboard(ctk.CTk):
         ctk.set_appearance_mode("dark")
         self.configure(fg_color="#0D0D0D")
         self.geometry("1024x600")
-        self.overrideredirect(True)
-        self.geometry(f"{self.winfo_screenwidth()}x{self.winfo_screenheight()}+0+0")
+        #self.overrideredirect(True)
+        #self.geometry(f"{self.winfo_screenwidth()}x{self.winfo_screenheight()}+0+0")
         self.bind("<Escape>", lambda e: self.destroy())
         
         # Socket creation for networking to desktop
@@ -48,6 +48,7 @@ class Dashboard(ctk.CTk):
         # Build UI
         self._build_layout()
         self._active_btn = None
+        self._overlay = None
         
         # Start background thread and timer loop
         desktop_input_thread = threading.Thread(target=self.receive_data, daemon=True).start()
@@ -111,7 +112,7 @@ class Dashboard(ctk.CTk):
             )
         self._btn_custom.grid(row=1, column=1, sticky="nsew", padx=(GAP, 0), pady=(GAP, 0))
     
-        # -- Sidebar ---------------------------------------------------------------------------------------
+        # -- Sidebar --------------------------------------------------------------------------------------------
     
         sidebar = ctk.CTkFrame(self, fg_color="#13132A", corner_radius=0, width=130)
         sidebar.grid(row=0, column=1, sticky="nsew")
@@ -120,7 +121,7 @@ class Dashboard(ctk.CTk):
         sidebar.grid_columnconfigure(0, weight=1)
         
         for row, (text, cmd) in enumerate([
-            ("TIMERS", self.button_callback),
+            ("TIMERS", self.show_timers_panel),
             ("CUSTOM\nMODE", self.button_callback),
             ("SETTINGS", self.button_callback),
             ("EXIT", self.destroy)
@@ -136,7 +137,123 @@ class Dashboard(ctk.CTk):
                 corner_radius=8,
                 height=80
             ).grid(row=row, column=0, padx=10, pady=6, sticky="ew")
+            
+    # -- Overlay System -------------------------------------------------------------------------------------
+        
+    def _show_overlay(self, build_fn):
+        # If there's already an open overlay, close that one
+        if self._overlay:
+            self._overlay.destroy()
                 
+        # Full-screen dark backdrop
+        overlay = ctk.CTkFrame(self, fg_color="#07071A", corner_radius=0)
+        overlay.place(x=0, y=0, relwidth=1, relheight=1)
+        overlay.bind("<Button-1>", lambda e: self._close_overlay())
+        self._overlay = overlay
+            
+        # Centered panel
+        panel = ctk.CTkFrame(overlay,
+                            fg_color="#16163A",
+                            corner_radius=14,
+                            width=740,
+                            height=530)
+        panel.place(relx=0.5, rely=0.5, anchor="center")
+        panel.pack_propagate(False)
+        build_fn(panel)
+            
+    def _close_overlay(self):
+        if self._overlay:
+            self._overlay.destroy()
+            self._overlay = None
+                
+    def _panel_header(self, panel, title):
+        header = ctk.CTkFrame(panel, fg_color="transparent")
+        header.pack(fill="x", padx=24, pady=(20, 0))
+        ctk.CTkLabel(header, text=title,
+                    font=ctk.CTkFont(size=20, weight="bold"),
+                    text_color="#FFFFFF").pack(side="left")
+        ctk.CTkButton(header, text="x", width=38, height=38,
+                    fg_color="#2A2A55", hover_color="#3A3A77",
+                    font=ctk.CTkFont(size=15),
+                    command=self._close_overlay).pack(side="right")
+        ctk.CTkFrame(panel, fg_color="#2A2A55", height=1).pack(fill="x", padx=24, pady=(12, 0))
+            
+    def _section_label(self, parent, text):
+        ctk.CTkLabel(parent, text=text,
+                    font=ctk.CTkFont(size=14, weight="bold"),
+        text_color="#7777AA").pack(anchor="w", pady=(12, 4))
+            
+    def _card(self, parent):
+        f = ctk.CTkFrame(parent, fg_color="#1E1E45", corner_radius=8)
+        f.pack(fill="x", pady=(0, 6))
+        return f
+        
+    #-- Timers Panel ----------------------------------------------------------------------------------------
+                
+    def show_timers_panel(self):
+        self._show_overlay(self._build_timers)
+            
+    def _build_timers(self, panel):
+        self._panel_header(panel, "TIMERS")
+        content = ctk.CTkScrollableFrame(panel, fg_color="transparent")
+        content.pack(fill="both", expand=True, padx=24, pady=16)
+            
+        # Work Timer
+        self._section_label(content, "Work Timer")
+        wr = self._card(content)
+        work_label = ctk.CTkLabel(wr, text=f"Elapsed: {self.format_time(self.work_seconds)}",
+                                font=ctk.CTkFont(size=14), text_color="#CCCCEE")
+        work_label.pack(side="left", padx=16, pady=14)
+        ctk.CTkButton(wr, text="Reset", width=100,
+                    command=lambda: self._reset_work(work_label)
+                    ).pack(side="right", padx=12, pady=10)
+            
+        # Entertainment Timer
+        self._section_label(content, "Entertainment Timer")
+        er = self._card(content)
+        ent_label = ctk.CTkLabel(er, text=f"Remaining: {self.format_time(self.entertainment_seconds)}",
+                                font=ctk.CTkFont(size=14), text_color="#CCCCEE")
+        ent_label.pack(side="left", padx=16, pady=14)
+        ctk.CTkButton(er, text="Reset", width=100,
+                    command=lambda: self._reset_entertainment(ent_label)
+                    ).pack(side="right", padx=12, pady=10)
+            
+        # Duration Presets
+        self._section_label(content, "Set Entertainment Duration")
+        dur = self._card(content)
+        for label, secs in [("1 hr", 3600), ("2 hr", 7200), ("4 hr", 14400), ("8 hr", 28800)]:
+            ctk.CTkButton(dur, text=label, width=90, height=38,
+                        command=lambda s=secs: self._set_entertainment_duration(s, ent_label)
+                        ).pack(side="left", padx=8, pady=10)
+                
+        # Event Zones
+        self._section_label(content, "Event Zones")
+        ez = self._card(content)
+        info = ctk.CTkFrame(ez, fg_color="transparent")
+        info.pack(fill="x", padx=16, pady=12)
+        ctk.CTkLabel(info, text="End of Work -> Flash green for 10s, return to Work",
+                    font=ctk.CTkFont(size=13), text_color="#8888AA").pack(anchor="w")
+        ctk.CTkLabel(info, text="End of Entertainment -> Flash red for 5s, switch to Idle",
+                    font=ctk.CTkFont(size=13), text_color="#8888AA").pack(anchor="w", pady=(4, 0))
+            
+    def _reset_work(self, label):
+        self.work_seconds = 0
+        self._btn_work.configure(text=f"WORK\n{self.format_time(0)}")
+        label.configure(text=f"Elapsed: {self.format_time(0)}")
+            
+    def _reset_entertainment(self, label):
+        self.entertainment_seconds = self.entertainment_duration
+        self._btn_entertainment.configure(
+            text=f"ENTERTAINMENT\n{self.format_time(self.entertainment_seconds)}")
+        label.configure(text=f"Remaining: {self.format_time(self.entertainment_seconds)}")
+            
+    def _set_entertainment_duration(self, secs, label):
+        self.entertainment_duration = secs
+        self.entertainment_seconds = secs
+        self._btn_entertainment.configure(
+            text=f"ENTERTAINMENT\n{self.format_time(secs)}")
+        label.configure(text=f"Remaining: {self.format_time(secs)}")
+            
     # -----------------------------------------------------------------------------------------------------------
     # Timer Loop
     # -----------------------------------------------------------------------------------------------------------
