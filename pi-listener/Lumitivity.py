@@ -24,7 +24,7 @@ class Dashboard(ctk.CTk):
         self.socket.bind(("", 8080))
             
         # WLED variables
-        self.wled_ip = ["192.168.4.49", "192.168.4.40"] # WLED Controller name
+        self.wled_ip = ["192.168.4.74", "192.168.4.40"] # WLED Controller name
         self.wled_instr = {
                             "seg": {
                                 "on": True,
@@ -44,6 +44,10 @@ class Dashboard(ctk.CTk):
         
         self.last_flash_time = 0
         self.flash_cooldown = 0.1 # Seconds
+        
+        self.custom_color = [255, 255, 255]
+        self.custom_brightness = 128
+        self.custom_fx = 0
         
         # Build UI
         self._build_layout()
@@ -122,7 +126,7 @@ class Dashboard(ctk.CTk):
         
         for row, (text, cmd) in enumerate([
             ("TIMERS", self.show_timers_panel),
-            ("CUSTOM\nMODE", self.button_callback),
+            ("CUSTOM\nMODE", self.show_custom_panel),
             ("SETTINGS", self.button_callback),
             ("EXIT", self.destroy)
         ]):
@@ -138,7 +142,7 @@ class Dashboard(ctk.CTk):
                 height=80
             ).grid(row=row, column=0, padx=10, pady=6, sticky="ew")
             
-    # -- Overlay System -------------------------------------------------------------------------------------
+    # -- Overlay System -----------------------------------------------------------------------------------------
         
     def _show_overlay(self, build_fn):
         # If there's already an open overlay, close that one
@@ -166,7 +170,9 @@ class Dashboard(ctk.CTk):
             self._overlay.destroy()
             self._overlay = None
                 
-    def _panel_header(self, panel, title):
+    def _panel_header(self, panel, title, close_fn=None):
+        if close_fn is None:
+            close_fn = self._close_overlay
         header = ctk.CTkFrame(panel, fg_color="transparent")
         header.pack(fill="x", padx=24, pady=(20, 0))
         ctk.CTkLabel(header, text=title,
@@ -175,7 +181,7 @@ class Dashboard(ctk.CTk):
         ctk.CTkButton(header, text="x", width=38, height=38,
                     fg_color="#2A2A55", hover_color="#3A3A77",
                     font=ctk.CTkFont(size=15),
-                    command=self._close_overlay).pack(side="right")
+                    command=close_fn).pack(side="right")
         ctk.CTkFrame(panel, fg_color="#2A2A55", height=1).pack(fill="x", padx=24, pady=(12, 0))
             
     def _section_label(self, parent, text):
@@ -188,7 +194,7 @@ class Dashboard(ctk.CTk):
         f.pack(fill="x", pady=(0, 6))
         return f
         
-    #-- Timers Panel ----------------------------------------------------------------------------------------
+    #-- Timers Panel --------------------------------------------------------------------------------------------
                 
     def show_timers_panel(self):
         self._show_overlay(self._build_timers)
@@ -253,7 +259,110 @@ class Dashboard(ctk.CTk):
         self._btn_entertainment.configure(
             text=f"ENTERTAINMENT\n{self.format_time(secs)}")
         label.configure(text=f"Remaining: {self.format_time(secs)}")
-            
+        
+    #-- Custom Panel --------------------------------------------------------------------------------------------
+        
+    def show_custom_panel(self):
+        self._show_overlay(self._build_custom)
+        
+    def _build_custom(self, panel):
+        # Snapshot values so ✕ / Cancel can revert
+        prev_color      = list(self.custom_color)
+        prev_brightness = self.custom_brightness
+        prev_fx         = self.custom_fx
+        prev_mode       = self.current_mode
+
+        def revert():
+            self.custom_color      = prev_color
+            self.custom_brightness = prev_brightness
+            self.custom_fx         = prev_fx
+            # Restore whatever lights were showing before the panel opened
+            if prev_mode == "Work":
+                self.set_mode_work()
+            elif prev_mode == "Leisure":
+                self.set_mode_leisure()
+            elif prev_mode == "Idle":
+                self.set_mode_idle()
+            elif prev_mode == "Custom":
+                self.sync_wleds({
+                    "on": True, "tt": 0,
+                    "bri": prev_brightness,
+                    "seg": [{"col": [prev_color], "fx": prev_fx}]
+                })
+            self._close_overlay()
+
+        self._panel_header(panel, "CUSTOM MODE SETTINGS", close_fn=revert)
+
+        content = ctk.CTkFrame(panel, fg_color="transparent")
+        content.pack(fill="both", expand=True, padx=24, pady=16)
+
+        self._section_label(content, "Color")
+        r_var   = ctk.IntVar(value=self.custom_color[0])
+        g_var   = ctk.IntVar(value=self.custom_color[1])
+        b_var   = ctk.IntVar(value=self.custom_color[2])
+        bri_var = ctk.IntVar(value=self.custom_brightness)
+
+        effects = {
+            "Solid": 0, "Blink": 1, "Breathe": 2,
+            "Color Wipe": 3, "Chase": 22, "Rainbow": 9, "Twinkle": 7
+        }
+        current = next((k for k, v in effects.items() if v == self.custom_fx), "Solid")
+        fx_var = ctk.StringVar(value=current)
+
+        def preview(*_):
+            self.sync_wleds({
+                "on": True, "tt": 0,
+                "bri": bri_var.get(),
+                "seg": [{"col": [[r_var.get(), g_var.get(), b_var.get()]],
+                         "fx": effects[fx_var.get()]}]
+            })
+
+        for label, var, accent in [
+            ("R", r_var, "#FF5555"),
+            ("G", g_var, "#55FF55"),
+            ("B", b_var, "#5599FF")
+        ]:
+            row = ctk.CTkFrame(content, fg_color="transparent")
+            row.pack(fill="x", pady=3)
+            ctk.CTkLabel(row, text=label, width=22,
+                         font=ctk.CTkFont(size=14, weight="bold"),
+                         text_color=accent).pack(side="left")
+            ctk.CTkSlider(row, from_=0, to=255, variable=var,
+                          button_color=accent, progress_color=accent,
+                          command=preview).pack(side="left", fill="x", expand=True, padx=10)
+            ctk.CTkLabel(row, textvariable=var, width=36,
+                         font=ctk.CTkFont(size=13), text_color="#FFFFFF").pack(side="left")
+
+        self._section_label(content, "Brightness")
+        bri_row = ctk.CTkFrame(content, fg_color="transparent")
+        bri_row.pack(fill="x", pady=3)
+        ctk.CTkSlider(bri_row, from_=1, to=255, variable=bri_var,
+                      command=preview).pack(side="left", fill="x", expand=True, padx=(0, 10))
+        ctk.CTkLabel(bri_row, textvariable=bri_var, width=36,
+                     font=ctk.CTkFont(size=13), text_color="#FFFFFF").pack(side="left")
+
+        self._section_label(content, "Effect")
+        ctk.CTkOptionMenu(content, values=list(effects.keys()), variable=fx_var,
+                          fg_color="#252550", command=preview).pack(anchor="w", pady=3)
+
+        def save():
+            self.custom_color      = [r_var.get(), g_var.get(), b_var.get()]
+            self.custom_brightness = bri_var.get()
+            self.custom_fx         = effects[fx_var.get()]
+            if self.current_mode != "Custom":
+                self.set_mode_custom()
+            self._close_overlay()
+
+        btn_row = ctk.CTkFrame(content, fg_color="transparent")
+        btn_row.pack(fill="x", pady=(20, 0))
+        ctk.CTkButton(btn_row, text="Cancel", height=46, width=120,
+                      fg_color="#2A2A55", hover_color="#3A3A77",
+                      font=ctk.CTkFont(size=15, weight="bold"),
+                      command=revert).pack(side="left")
+        ctk.CTkButton(btn_row, text="Save", height=46,
+                      font=ctk.CTkFont(size=15, weight="bold"),
+                      command=save).pack(side="left", fill="x", expand=True, padx=(10, 0))
+    
     # -----------------------------------------------------------------------------------------------------------
     # Timer Loop
     # -----------------------------------------------------------------------------------------------------------
@@ -400,10 +509,10 @@ class Dashboard(ctk.CTk):
         print("Custom Mode Enabled")
         self.sync_wleds({
                             "on": True,
-                            "bri": 128,
+                            "bri": self.custom_brightness,
                             "seg": [{
-                                "col": [[255, 0, 255]],
-                                "fx": 0,
+                                "col": [self.custom_color],
+                                "fx": self.custom_fx,
                                 }]
                           })
         
