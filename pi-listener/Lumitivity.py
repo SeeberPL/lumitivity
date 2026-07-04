@@ -49,6 +49,31 @@ class Dashboard(ctk.CTk):
         self.custom_brightness = 128
         self.custom_fx = 0
         
+        self.mode_colors = {
+            "Work":          [0,   255, 0  ],
+            "Entertainment": [255, 255, 0  ],
+            "Music":         [0,   255, 255],
+            "Idle":          [255, 255, 255],
+        }
+        self._themes = {
+            "Default":  {"btn_fg": "#1F6AA5", "btn_hover": "#144870",
+                         "sidebar": "#13132A", "backdrop": "#07071A",
+                         "overlay": "#16163A", "card": "#1E1E45", "divider": "#2A2A55"},
+            "Midnight": {"btn_fg": "#2A2A6A", "btn_hover": "#3A3A8A",
+                         "sidebar": "#0A0A1A", "backdrop": "#04040E",
+                         "overlay": "#0F0F28", "card": "#161635", "divider": "#202050"},
+            "Slate":    {"btn_fg": "#383838", "btn_hover": "#484848",
+                         "sidebar": "#111111", "backdrop": "#050505",
+                         "overlay": "#1A1A1A", "card": "#222222", "divider": "#333333"},
+            "Forest":   {"btn_fg": "#1A4A2A", "btn_hover": "#2A6A3A",
+                         "sidebar": "#061208", "backdrop": "#020804",
+                         "overlay": "#0A1A0C", "card": "#101E12", "divider": "#1A3020"},
+            "Ember":    {"btn_fg": "#6A2A1A", "btn_hover": "#8A3A2A",
+                         "sidebar": "#140604", "backdrop": "#080200",
+                         "overlay": "#1C0804", "card": "#240C06", "divider": "#361410"},
+        }
+        self._theme = self._themes["Default"]
+        
         # Build UI
         self._build_layout()
         self._active_btn = None
@@ -118,30 +143,29 @@ class Dashboard(ctk.CTk):
     
         # -- Sidebar --------------------------------------------------------------------------------------------
     
-        sidebar = ctk.CTkFrame(self, fg_color="#13132A", corner_radius=0, width=130)
-        sidebar.grid(row=0, column=1, sticky="nsew")
-        sidebar.grid_propagate(False)
-        sidebar.grid_rowconfigure((0, 1, 2, 3), weight=1)
-        sidebar.grid_columnconfigure(0, weight=1)
+        self._sidebar = ctk.CTkFrame(self, fg_color=self._theme["sidebar"], corner_radius=0, width=130)
+        self._sidebar.grid(row=0, column=1, sticky="nsew")
+        self._sidebar.grid_propagate(False)
+        self._sidebar.grid_rowconfigure((0, 1, 2, 3), weight=1)
+        self._sidebar.grid_columnconfigure(0, weight=1)
         
+        self._sidebar_btns = []
         for row, (text, cmd) in enumerate([
             ("TIMERS", self.show_timers_panel),
             ("CUSTOM\nMODE", self.show_custom_panel),
-            ("SETTINGS", self.button_callback),
+            ("SETTINGS", self.show_settings_panel),
             ("EXIT", self.destroy)
         ]):
-            ctk.CTkButton(
-                sidebar,
-                text=text,
+            btn = ctk.CTkButton(
+                self._sidebar, text=text,
                 font=ctk.CTkFont(size=11, weight="bold"),
                 command=cmd,
-                fg_color="#1E1E40",
-                hover_color="#2E2E60",
-                text_color="#AAAACC",
-                corner_radius=8,
-                height=80
-            ).grid(row=row, column=0, padx=10, pady=6, sticky="ew")
-            
+                fg_color=self._theme["btn_fg"], hover_color=self._theme["btn_hover"],
+                text_color="#AAAACC", corner_radius=8, height=80
+            )
+            btn.grid(row=row, column=0, padx=10, pady=6, sticky="ew")
+            self._sidebar_btns.append(btn)
+                
     # -- Overlay System -----------------------------------------------------------------------------------------
         
     def _show_overlay(self, build_fn):
@@ -150,14 +174,14 @@ class Dashboard(ctk.CTk):
             self._overlay.destroy()
                 
         # Full-screen dark backdrop
-        overlay = ctk.CTkFrame(self, fg_color="#07071A", corner_radius=0)
+        overlay = ctk.CTkFrame(self, fg_color=self._theme["backdrop"], corner_radius=0)
         overlay.place(x=0, y=0, relwidth=1, relheight=1)
         overlay.bind("<Button-1>", lambda e: self._close_overlay())
         self._overlay = overlay
             
         # Centered panel
         panel = ctk.CTkFrame(overlay,
-                            fg_color="#16163A",
+                            fg_color=self._theme["overlay"],
                             corner_radius=14,
                             width=740,
                             height=530)
@@ -179,10 +203,10 @@ class Dashboard(ctk.CTk):
                     font=ctk.CTkFont(size=20, weight="bold"),
                     text_color="#FFFFFF").pack(side="left")
         ctk.CTkButton(header, text="x", width=38, height=38,
-                    fg_color="#2A2A55", hover_color="#3A3A77",
+                    fg_color=self._theme["btn_fg"], hover_color=self._theme["btn_hover"],
                     font=ctk.CTkFont(size=15),
                     command=close_fn).pack(side="right")
-        ctk.CTkFrame(panel, fg_color="#2A2A55", height=1).pack(fill="x", padx=24, pady=(12, 0))
+        ctk.CTkFrame(panel, fg_color=self._theme["divider"], height=1).pack(fill="x", padx=24, pady=(12, 0))
             
     def _section_label(self, parent, text):
         ctk.CTkLabel(parent, text=text,
@@ -190,7 +214,7 @@ class Dashboard(ctk.CTk):
         text_color="#7777AA").pack(anchor="w", pady=(12, 4))
             
     def _card(self, parent):
-        f = ctk.CTkFrame(parent, fg_color="#1E1E45", corner_radius=8)
+        f = ctk.CTkFrame(parent, fg_color=self._theme["card"], corner_radius=8)
         f.pack(fill="x", pady=(0, 6))
         return f
         
@@ -362,6 +386,69 @@ class Dashboard(ctk.CTk):
         ctk.CTkButton(btn_row, text="Save", height=46,
                       font=ctk.CTkFont(size=15, weight="bold"),
                       command=save).pack(side="left", fill="x", expand=True, padx=(10, 0))
+        
+    #-- Settings Panel ------------------------------------------------------------------------------------------
+        
+    def show_settings_panel(self):
+        self._show_overlay(self._build_settings)
+
+    def _build_settings(self, panel):
+        self._panel_header(panel, "SETTINGS")
+        content = ctk.CTkScrollableFrame(panel, fg_color="transparent")
+        content.pack(fill="both", expand=True, padx=24, pady=16)
+
+        # UI Theme presets
+        self._section_label(content, "UI Theme")
+        themes = ["Default", "Midnight", "Slate", "Forest", "Ember"]
+        theme_row = ctk.CTkFrame(content, fg_color="transparent")
+        theme_row.pack(fill="x", pady=(0, 6))
+        for name in themes:
+            t = self._themes[name]
+            ctk.CTkButton(theme_row, text=name, width=110, height=36,
+                          fg_color=t["btn_fg"], hover_color=t["btn_hover"],
+                          font=ctk.CTkFont(size=12, weight="bold"),
+                          command=lambda n=name: self._apply_ui_preset(n)
+            ).pack(side="left", padx=4)
+
+        # Mode LED colors
+        self._section_label(content, "Mode Colors")
+        swatches = [
+            ("White",   [255, 255, 255]),
+            ("Red",     [255, 0,   0  ]),
+            ("Green",   [0,   255, 0  ]),
+            ("Blue",    [0,   0,   255]),
+            ("Yellow",  [255, 255, 0  ]),
+            ("Cyan",    [0,   255, 255]),
+            ("Magenta", [255, 0,   255]),
+            ("Orange",  [255, 128, 0  ]),
+        ]
+        for mode in ["Work", "Entertainment", "Music", "Idle"]:
+            row = ctk.CTkFrame(content, fg_color="#1E1E45", corner_radius=8)
+            row.pack(fill="x", pady=(0, 6))
+            ctk.CTkLabel(row, text=mode, width=110,
+                         font=ctk.CTkFont(size=13, weight="bold"),
+                         text_color="#CCCCEE").pack(side="left", padx=12, pady=10)
+            for _, rgb in swatches:
+                hex_col = "#{:02X}{:02X}{:02X}".format(*rgb)
+                ctk.CTkButton(row, text="", width=30, height=30,
+                              fg_color=hex_col, hover_color=hex_col, corner_radius=4,
+                              command=lambda m=mode, c=rgb: self._set_mode_color(m, c)
+                ).pack(side="left", padx=3, pady=8)
+
+    def _apply_ui_preset(self, name):
+        self._theme = self._themes[name]
+        t = self._theme
+        self._close_overlay()
+        self._sidebar.configure(fg_color=t["sidebar"])
+        for btn in [self._btn_work, self._btn_entertainment,
+                    self._btn_music, self._btn_custom] + self._sidebar_btns:
+            btn.configure(fg_color=t["btn_fg"], hover_color=t["btn_hover"])
+
+    def _set_mode_color(self, mode, color):
+        self.mode_colors[mode] = color
+        if self.current_mode == mode:
+            self.sync_wleds({"on": True, "tt": 0, "bri": 128,
+                             "seg": [{"col": [color], "fx": 0}]})
     
     # -----------------------------------------------------------------------------------------------------------
     # Timer Loop
@@ -442,7 +529,7 @@ class Dashboard(ctk.CTk):
                             "seg": [{"col": [[255, 255, 255]]}]
                             })
         # Return to normal work lights after 100ms
-        self.after(100,  lambda: self.sync_wleds({"bri": 128, "tt": 5, "seg": [{"col": [[0, 255, 0]]}]}))
+        self.after(100,  lambda: self.sync_wleds({"bri": 128, "tt": 5, "seg": [{"col": [self.mode_colors["Work"]]}]}))
 
     # -----------------------------------------------------------------------------------------------------------
     # Modes
@@ -456,7 +543,7 @@ class Dashboard(ctk.CTk):
                             "on": True,
                             "bri": 128,
                             "seg": [{
-                                "col": [[255, 255, 255]],
+                                "col": [self.mode_colors["Idle"]],
                                 "fx": 0,
                                 }]
                           })
@@ -470,7 +557,7 @@ class Dashboard(ctk.CTk):
                             "on": True,
                             "bri": 128,
                             "seg": [{
-                                "col": [[0, 255, 0]],
+                                "col": [self.mode_colors["Work"]],
                                 "fx": 0,
                                 }]
                           })
@@ -485,7 +572,7 @@ class Dashboard(ctk.CTk):
                             "on": True,
                             "bri": 128,
                             "seg": [{
-                                "col": [[255, 255, 0]],
+                                "col": [self.mode_colors["Entertainment"]],
                                 "fx": 0,
                                 }]
                           })
@@ -498,7 +585,7 @@ class Dashboard(ctk.CTk):
                             "on": True,
                             "bri": 128,
                             "seg": [{
-                                "col": [[0, 255, 255]],
+                                "col": [self.mode_colors["Music"]],
                                 "fx": 0,
                                 }]
                           })
